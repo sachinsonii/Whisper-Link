@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper-Link</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Welcome Screen -->
+        <div id="welcome-screen">
+            <h1>Whisper-Link</h1>
+            <p>Create a new chat room or join an existing one</p>
+            <div>
+                <button id="create-btn">Create Room</button>
+                <button id="join-btn">Join Room</button>
+                <button id="view-public-btn">View Public Rooms</button>
+            </div>
+            
+            <div id="create-form" style="display: none;">
+                <h3>Create New Room</h3>
+                <input type="text" id="room-name-input" placeholder="Room Name">
+                <div>
+                    <label>
+                        <input type="radio" name="room-type" value="public" checked> Public
+                    </label>
+                    <label>
+                        <input type="radio" name="room-type" value="private"> Private
+                    </label>
+                </div>
+                <button id="create-room-btn">Create</button>
+            </div>
+            
+            <div id="join-form" style="display: none;">
+                <h3>Join Room</h3>
+                <input type="text" id="room-id-input" placeholder="Enter Room ID">
+                <button id="connect-btn">Connect</button>
+            </div>
+            
+            <div id="public-rooms" style="display: none;">
+                <h3>Available Public Rooms</h3>
+                <div id="rooms-list">Loading rooms...</div>
+                <button id="refresh-rooms-btn">Refresh List</button>
+                <button id="back-btn">Back</button>
+            </div>
+        </div>
+
+        <!-- Chat Screen -->
+        <div id="chat-container" style="display: none;">
+            <div>
+                <h2>Chat Room: <span id="room-name-display"></span></h2>
+                <div id="room-id-display"></div>
+                <div id="status">Connecting...</div>
+                <button id="leave-btn">Leave Room</button>
+            </div>
+            <div id="peers-list">Connected peers: You</div>
+            <div id="messages"></div>
+            <div>
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+
+<style>
+
+</style>
+</body>
+</html>
