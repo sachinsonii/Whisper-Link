@@ -26,6 +26,9 @@ Whisper-Link is a peer-to-peer chat application that allows users to create and 
 - Enhance UI with better styling and animations.
 - Add voice/video calling capabilities.
 
+## Disclaimer
+This project is created by multiple AI agents through the logic and ideas of the user to test the effectiveness of AI agents in development.
+
 ## Contribution
 Contributions are welcome! Feel free to fork this repository and submit a pull request.
 
