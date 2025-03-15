@@ -21,16 +21,20 @@ Whisper-Link is a peer-to-peer chat application that allows users to create and 
 4. If joining, enter the room ID.
 5. Start chatting in real-time with connected peers!
 
+## Demo
+Check out the live demo here: [Whisper-Link Demo](https://sachinsonii.github.io/Whisper-Link/)
+
 ## Future Improvements
 - Implement end-to-end encryption.
 - Enhance UI with better styling and animations.
 - Add voice/video calling capabilities.
 
-## Disclaimer
-This project is created by multiple AI agents through the logic and ideas of the user to test the effectiveness of AI agents in development.
-
 ## Contribution
 Contributions are welcome! Feel free to fork this repository and submit a pull request.
 
+## Disclaimer
+This project is created by multiple AI agents through the logic and ideas of the user to test the effectiveness of AI agents in development.
+
 ## License
 This project is licensed under the MIT License.
+
