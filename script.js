@@ -36,53 +36,44 @@ document.addEventListener('DOMContentLoaded', () => {
     let username = 'User_' + Math.floor(Math.random() * 1000);
 
     // Public rooms registry
-    // In a real application, this would be on a server
-    // For this example, we'll use localStorage
+    // Replace localStorage with shared storage API
     function registerPublicRoom(roomId, roomName) {
-        let publicRooms = JSON.parse(localStorage.getItem('publicRooms') || '{}');
-        publicRooms[roomId] = {
-            name: roomName,
-            createdAt: new Date().toISOString()
-        };
-        localStorage.setItem('publicRooms', JSON.stringify(publicRooms));
+        SharedStorageAPI.registerRoom(roomId, roomName);
     }
 
     function unregisterPublicRoom(roomId) {
-        let publicRooms = JSON.parse(localStorage.getItem('publicRooms') || '{}');
-        if (publicRooms[roomId]) {
-            delete publicRooms[roomId];
-            localStorage.setItem('publicRooms', JSON.stringify(publicRooms));
-        }
+        SharedStorageAPI.unregisterRoom(roomId);
     }
 
-    function getPublicRooms() {
-        return JSON.parse(localStorage.getItem('publicRooms') || '{}');
+    function getPublicRooms(callback) {
+        SharedStorageAPI.getRooms(callback);
     }
 
     function loadPublicRooms() {
-        const rooms = getPublicRooms();
-        roomsListDiv.innerHTML = '';
-        
-        if (Object.keys(rooms).length === 0) {
-            roomsListDiv.innerHTML = '<p>No public rooms available.</p>';
-            return;
-        }
-        
-        for (const [roomId, roomInfo] of Object.entries(rooms)) {
-            const roomElement = document.createElement('div');
-            roomElement.innerHTML = `
-                <span>${roomInfo.name || 'Unnamed Room'}</span>
-                <button class="join-room-btn" data-roomid="${roomId}">Join</button>
-            `;
-            roomsListDiv.appendChild(roomElement);
-        }
-        
-        // Add event listeners to join buttons
-        document.querySelectorAll('.join-room-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const roomId = btn.getAttribute('data-roomid');
-                const roomInfo = rooms[roomId];
-                joinRoom(roomId, roomInfo.name);
+        getPublicRooms((rooms) => {
+            roomsListDiv.innerHTML = '';
+            
+            if (Object.keys(rooms).length === 0) {
+                roomsListDiv.innerHTML = '<p>No public rooms available.</p>';
+                return;
+            }
+            
+            for (const [roomId, roomInfo] of Object.entries(rooms)) {
+                const roomElement = document.createElement('div');
+                roomElement.innerHTML = `
+                    <span>${roomInfo.name || 'Unnamed Room'}</span>
+                    <button class="join-room-btn" data-roomid="${roomId}">Join</button>
+                `;
+                roomsListDiv.appendChild(roomElement);
+            }
+            
+            // Add event listeners to join buttons
+            document.querySelectorAll('.join-room-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const roomId = btn.getAttribute('data-roomid');
+                    const roomInfo = rooms[roomId];
+                    joinRoom(roomId, roomInfo.name);
+                });
             });
         });
     }
@@ -329,172 +320,173 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Broadcast message to all connected peers
     function broadcastMessage(message) {
-Object.values(connections).forEach(conn => {
-if (conn.open) {
-    conn.send(message);
-}
-});
-}
+        Object.values(connections).forEach(conn => {
+            if (conn.open) {
+                conn.send(message);
+            }
+        });
+    }
 
-// Display message in chat
-function displayMessage(message, isFromMe, senderId = null) {
-const messageElement = document.createElement('div');
+    // Display message in chat
+    function displayMessage(message, isFromMe, senderId = null) {
+        const messageElement = document.createElement('div');
 
-if (isFromMe) {
-messageElement.textContent = `You: ${message}`;
-messageElement.className = 'my-message';
-} else {
-const peerPrefix = senderId ? `${senderId.substring(0, 5)}...` : 'Other';
-messageElement.textContent = `${peerPrefix}: ${message}`;
-messageElement.className = 'other-message';
-}
+        if (isFromMe) {
+            messageElement.textContent = `You: ${message}`;
+            messageElement.className = 'my-message';
+        } else {
+            const peerPrefix = senderId ? `${senderId.substring(0, 5)}...` : 'Other';
+            messageElement.textContent = `${peerPrefix}: ${message}`;
+            messageElement.className = 'other-message';
+        }
 
-messages.appendChild(messageElement);
-messages.scrollTop = messages.scrollHeight;
-}
+        messages.appendChild(messageElement);
+        messages.scrollTop = messages.scrollHeight;
+    }
 
-// Display system message
-function displaySystemMessage(message) {
-const messageElement = document.createElement('div');
-messageElement.textContent = message;
-messageElement.className = 'system-message';
-messages.appendChild(messageElement);
-messages.scrollTop = messages.scrollHeight;
-}
+    // Display system message
+    function displaySystemMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        messageElement.className = 'system-message';
+        messages.appendChild(messageElement);
+        messages.scrollTop = messages.scrollHeight;
+    }
 
-// Send message to all peers
-function sendMessage() {
-const message = messageInput.value.trim();
-if (message) {
-broadcastMessage({
-    type: 'chat-message',
-    message: message
-});
-displayMessage(message, true);
-messageInput.value = '';
-}
-}
+    // Send message to all peers
+    function sendMessage() {
+        const message = messageInput.value.trim();
+        if (message) {
+            broadcastMessage({
+                type: 'chat-message',
+                message: message
+            });
+            displayMessage(message, true);
+            messageInput.value = '';
+        }
+    }
 
-// Leave current room
-function leaveRoom() {
-if (isHost && isPublic) {
-unregisterPublicRoom(roomId);
-}
+    // Leave current room
+    function leaveRoom() {
+        if (isHost && isPublic) {
+            unregisterPublicRoom(roomId);
+        }
 
-// Close all connections
-Object.values(connections).forEach(conn => {
-if (conn.open) {
-    conn.close();
-}
-});
+        // Close all connections
+        Object.values(connections).forEach(conn => {
+            if (conn.open) {
+                conn.close();
+            }
+        });
 
-// Close peer connection
-if (peer) {
-peer.destroy();
-}
+        // Close peer connection
+        if (peer) {
+            peer.destroy();
+        }
 
-// Reset variables
-connections = {};
-roomId = null;
-roomName = null;
-isHost = false;
-peersList = [];
+        // Reset variables
+        connections = {};
+        roomId = null;
+        roomName = null;
+        isHost = false;
+        peersList = [];
 
-// Return to welcome screen
-chatContainer.style.display = 'none';
-welcomeScreen.style.display = 'block';
-createForm.style.display = 'none';
-joinForm.style.display = 'none';
-publicRoomsDiv.style.display = 'none';
-}
+        // Return to welcome screen
+        chatContainer.style.display = 'none';
+        welcomeScreen.style.display = 'block';
+        createForm.style.display = 'none';
+        joinForm.style.display = 'none';
+        publicRoomsDiv.style.display = 'none';
+    }
 
-// Event Listeners
-createBtn.addEventListener('click', () => {
-createForm.style.display = 'block';
-joinForm.style.display = 'none';
-publicRoomsDiv.style.display = 'none';
-});
-
-joinBtn.addEventListener('click', () => {
-joinForm.style.display = 'block';
-createForm.style.display = 'none';
-publicRoomsDiv.style.display = 'none';
-});
-
-viewPublicBtn.addEventListener('click', () => {
-publicRoomsDiv.style.display = 'block';
-createForm.style.display = 'none';
-joinForm.style.display = 'none';
-loadPublicRooms();
-});
-
-createRoomBtn.addEventListener('click', createRoom);
-
-connectBtn.addEventListener('click', () => {
-const id = roomIdInput.value.trim();
-if (id) {
-joinRoom(id);
-} else {
-alert('Please enter a room ID');
-}
-});
-
-refreshRoomsBtn.addEventListener('click', loadPublicRooms);
-
-backBtn.addEventListener('click', () => {
-publicRoomsDiv.style.display = 'none';
-});
-
-sendBtn.addEventListener('click', sendMessage);
-
-messageInput.addEventListener('keypress', (e) => {
-if (e.key === 'Enter') {
-sendMessage();
-}
-});
-
-leaveBtn.addEventListener('click', leaveRoom);
-
-// Copy room ID to clipboard when clicked
-roomIdDisplay.addEventListener('click', () => {
-if (roomId) {
-navigator.clipboard.writeText(roomId)
-    .then(() => {
-        alert('Room ID copied to clipboard!');
-    })
-    .catch(err => {
-        console.error('Could not copy text: ', err);
+    // Event Listeners
+    createBtn.addEventListener('click', () => {
+        createForm.style.display = 'block';
+        joinForm.style.display = 'none';
+        publicRoomsDiv.style.display = 'none';
     });
-}
+
+    joinBtn.addEventListener('click', () => {
+        joinForm.style.display = 'block';
+        createForm.style.display = 'none';
+        publicRoomsDiv.style.display = 'none';
+    });
+
+    viewPublicBtn.addEventListener('click', () => {
+        publicRoomsDiv.style.display = 'block';
+        createForm.style.display = 'none';
+        joinForm.style.display = 'none';
+        loadPublicRooms();
+    });
+
+    createRoomBtn.addEventListener('click', createRoom);
+
+    connectBtn.addEventListener('click', () => {
+        const id = roomIdInput.value.trim();
+        if (id) {
+            joinRoom(id);
+        } else {
+            alert('Please enter a room ID');
+        }
+    });
+
+    refreshRoomsBtn.addEventListener('click', loadPublicRooms);
+
+    backBtn.addEventListener('click', () => {
+        publicRoomsDiv.style.display = 'none';
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    leaveBtn.addEventListener('click', leaveRoom);
+
+    // Copy room ID to clipboard when clicked
+    roomIdDisplay.addEventListener('click', () => {
+        if (roomId) {
+            navigator.clipboard.writeText(roomId)
+                .then(() => {
+                    alert('Room ID copied to clipboard!');
+                })
+                .catch(err => {
+                    console.error('Could not copy text: ', err);
+                });
+        }
+    });
+
+    // Clean up on window unload
+    window.addEventListener('beforeunload', () => {
+        if (isHost && isPublic && roomId) {
+            unregisterPublicRoom(roomId);
+        }
+    });
+
+    // Initialize
+    // Check for expired public rooms (older than 24 hours)
+    const cleanupExpiredRooms = () => {
+        const publicRooms = getPublicRooms();
+        const now = new Date();
+        let updated = false;
+
+        for (const [roomId, roomInfo] of Object.entries(publicRooms)) {
+            const createdAt = new Date(roomInfo.createdAt);
+            const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
+
+            if (hoursDiff > 24) {
+                delete publicRooms[roomId];
+                updated = true;
+            }
+        }
+
+        if (updated) {
+            localStorage.setItem('publicRooms', JSON.stringify(publicRooms));
+        }
+    };
+
+    cleanupExpiredRooms();
 });
-
-// Clean up on window unload
-window.addEventListener('beforeunload', () => {
-if (isHost && isPublic && roomId) {
-unregisterPublicRoom(roomId);
-}
-});
-
-// Initialize
-// Check for expired public rooms (older than 24 hours)
-const cleanupExpiredRooms = () => {
-const publicRooms = getPublicRooms();
-const now = new Date();
-let updated = false;
-
-for (const [roomId, roomInfo] of Object.entries(publicRooms)) {
-const createdAt = new Date(roomInfo.createdAt);
-const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
-
-if (hoursDiff > 24) {
-    delete publicRooms[roomId];
-    updated = true;
-}
-}
-
-if (updated) {
-localStorage.setItem('publicRooms', JSON.stringify(publicRooms));
-}
-};
-
-cleanupExpiredRooms();});
