@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // DOM Elements
+    // DOM Elements - Keeping all your existing elements
     const welcomeScreen = document.getElementById('welcome-screen');
     const chatContainer = document.getElementById('chat-container');
     const createBtn = document.getElementById('create-btn');
@@ -34,51 +34,264 @@ document.addEventListener('DOMContentLoaded', () => {
     let myId;
     let peersList = [];
     let username = 'User_' + Math.floor(Math.random() * 1000);
+    
+    // Discovery peer and public rooms list
+    let discoveryPeer;
+    let publicRooms = {};
+    const DISCOVERY_ID = 'whisper-link-discovery'; // Fixed ID for discovery service
 
-    // Public rooms registry
-    // Replace localStorage with shared storage API
-    function registerPublicRoom(roomId, roomName) {
-        SharedStorageAPI.registerRoom(roomId, roomName);
-    }
-
-    function unregisterPublicRoom(roomId) {
-        SharedStorageAPI.unregisterRoom(roomId);
-    }
-
-    function getPublicRooms(callback) {
-        SharedStorageAPI.getRooms(callback);
-    }
-
-    function loadPublicRooms() {
-        getPublicRooms((rooms) => {
-            roomsListDiv.innerHTML = '';
+    // Initialize Discovery Peer - used for public room discovery
+    function initDiscoveryPeer() {
+        // Check if we're already connected to the discovery service
+        if (discoveryPeer && discoveryPeer.id) return;
+        
+        // Create a new peer for discovery purposes
+        discoveryPeer = new Peer(null, {
+            debug: 2
+        });
+        
+        discoveryPeer.on('open', (id) => {
+            console.log('Discovery peer ID:', id);
             
-            if (Object.keys(rooms).length === 0) {
-                roomsListDiv.innerHTML = '<p>No public rooms available.</p>';
-                return;
-            }
+            // Try to connect to the discovery server
+            connectToDiscoveryServer();
+        });
+        
+        discoveryPeer.on('connection', (conn) => {
+            // Handle connection from someone looking for public rooms
+            console.log('Someone connected to us for discovery:', conn.peer);
             
-            for (const [roomId, roomInfo] of Object.entries(rooms)) {
-                const roomElement = document.createElement('div');
-                roomElement.innerHTML = `
-                    <span>${roomInfo.name || 'Unnamed Room'}</span>
-                    <button class="join-room-btn" data-roomid="${roomId}">Join</button>
-                `;
-                roomsListDiv.appendChild(roomElement);
-            }
-            
-            // Add event listeners to join buttons
-            document.querySelectorAll('.join-room-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const roomId = btn.getAttribute('data-roomid');
-                    const roomInfo = rooms[roomId];
-                    joinRoom(roomId, roomInfo.name);
+            conn.on('open', () => {
+                // Send our list of known public rooms
+                conn.send({
+                    type: 'public-rooms',
+                    rooms: getLocalPublicRooms()
                 });
+            });
+            
+            // Also handle discovery messages
+            conn.on('data', (data) => {
+                if (data.type === 'public-rooms') {
+                    // Merge the received public rooms with our list
+                    mergePublicRooms(data.rooms);
+                    
+                    // If we're currently viewing public rooms, refresh the display
+                    if (publicRoomsDiv.style.display !== 'none') {
+                        displayPublicRooms();
+                    }
+                } else if (data.type === 'room-announcement') {
+                    // Add the new public room to our list
+                    addPublicRoom(data.roomId, data.roomName);
+                    
+                    // If we're currently viewing public rooms, refresh the display
+                    if (publicRoomsDiv.style.display !== 'none') {
+                        displayPublicRooms();
+                    }
+                }
+            });
+        });
+        
+        discoveryPeer.on('error', (err) => {
+            console.error('Discovery peer error:', err);
+            
+            // If the discovery ID is taken, it means someone else is acting as the discovery server
+            if (err.type === 'unavailable-id') {
+                // Connect to the existing discovery server instead
+                connectToDiscoveryServer();
+            }
+        });
+    }
+    
+    // Connect to the discovery server
+    function connectToDiscoveryServer() {
+        try {
+            const conn = discoveryPeer.connect(DISCOVERY_ID);
+            
+            conn.on('open', () => {
+                console.log('Connected to discovery server');
+                
+                // Request public rooms
+                conn.send({
+                    type: 'request-public-rooms'
+                });
+                
+                // If we're hosting a public room, announce it
+                if (isHost && isPublic && roomId) {
+                    conn.send({
+                        type: 'room-announcement',
+                        roomId: roomId,
+                        roomName: roomName
+                    });
+                }
+            });
+            
+            conn.on('data', (data) => {
+                if (data.type === 'public-rooms') {
+                    // Merge the received public rooms with our list
+                    mergePublicRooms(data.rooms);
+                    
+                    // If we're currently viewing public rooms, refresh the display
+                    if (publicRoomsDiv.style.display !== 'none') {
+                        displayPublicRooms();
+                    }
+                }
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Error connecting to discovery server:', err);
+                
+                // If we can't connect to the discovery server, become one
+                becomeDiscoveryServer();
+            });
+        } catch (err) {
+            console.error('Failed to connect to discovery server:', err);
+            
+            // If we can't connect to the discovery server, become one
+            becomeDiscoveryServer();
+        }
+    }
+    
+    // Become the discovery server
+    function becomeDiscoveryServer() {
+        console.log('Becoming discovery server');
+        
+        // If we already have a discovery peer, destroy it
+        if (discoveryPeer) {
+            discoveryPeer.destroy();
+        }
+        
+        // Create a new peer with the fixed discovery ID
+        discoveryPeer = new Peer(DISCOVERY_ID, {
+            debug: 2
+        });
+        
+        discoveryPeer.on('open', (id) => {
+            console.log('Now serving as discovery server with ID:', id);
+        });
+        
+        discoveryPeer.on('connection', (conn) => {
+            console.log('New peer connected to discovery server:', conn.peer);
+            
+            conn.on('open', () => {
+                // Send our list of known public rooms
+                conn.send({
+                    type: 'public-rooms',
+                    rooms: getLocalPublicRooms()
+                });
+            });
+            
+            conn.on('data', (data) => {
+                if (data.type === 'request-public-rooms') {
+                    // Send our list of known public rooms
+                    conn.send({
+                        type: 'public-rooms',
+                        rooms: getLocalPublicRooms()
+                    });
+                } else if (data.type === 'room-announcement') {
+                    // Add the new public room to our list
+                    addPublicRoom(data.roomId, data.roomName);
+                    
+                    // Broadcast the new room to all connected peers
+                    broadcastPublicRoom(data.roomId, data.roomName, conn.peer);
+                } else if (data.type === 'public-rooms') {
+                    // Merge the received public rooms with our list
+                    mergePublicRooms(data.rooms);
+                }
+            });
+        });
+        
+        discoveryPeer.on('error', (err) => {
+            console.error('Discovery server error:', err);
+        });
+    }
+    
+    // Broadcast a public room to all discovery connections except the sender
+    function broadcastPublicRoom(roomId, roomName, excludePeerId) {
+        Object.entries(discoveryPeer.connections).forEach(([peerId, conns]) => {
+            if (peerId !== excludePeerId && conns.length > 0) {
+                conns[0].send({
+                    type: 'room-announcement',
+                    roomId: roomId,
+                    roomName: roomName
+                });
+            }
+        });
+    }
+    
+    // Get public rooms from localStorage
+    function getLocalPublicRooms() {
+        return JSON.parse(localStorage.getItem('publicRooms') || '{}');
+    }
+    
+    // Add a public room to localStorage
+    function addPublicRoom(roomId, roomName) {
+        const rooms = getLocalPublicRooms();
+        rooms[roomId] = {
+            name: roomName,
+            createdAt: new Date().toISOString()
+        };
+        localStorage.setItem('publicRooms', JSON.stringify(rooms));
+        publicRooms = rooms;
+    }
+    
+    // Remove a public room from localStorage
+    function removePublicRoom(roomId) {
+        const rooms = getLocalPublicRooms();
+        if (rooms[roomId]) {
+            delete rooms[roomId];
+            localStorage.setItem('publicRooms', JSON.stringify(rooms));
+            publicRooms = rooms;
+        }
+    }
+    
+    // Merge public rooms from another peer with our list
+    function mergePublicRooms(newRooms) {
+        const rooms = getLocalPublicRooms();
+        let updated = false;
+        
+        for (const [roomId, roomInfo] of Object.entries(newRooms)) {
+            if (!rooms[roomId]) {
+                rooms[roomId] = roomInfo;
+                updated = true;
+            }
+        }
+        
+        if (updated) {
+            localStorage.setItem('publicRooms', JSON.stringify(rooms));
+            publicRooms = rooms;
+        }
+    }
+    
+    // Display public rooms
+    function displayPublicRooms() {
+        const rooms = getLocalPublicRooms();
+        roomsListDiv.innerHTML = '';
+        
+        if (Object.keys(rooms).length === 0) {
+            roomsListDiv.innerHTML = '<p>No public rooms available.</p>';
+            return;
+        }
+        
+        for (const [roomId, roomInfo] of Object.entries(rooms)) {
+            const roomElement = document.createElement('div');
+            roomElement.innerHTML = `
+                <span>${roomInfo.name || 'Unnamed Room'}</span>
+                <button class="join-room-btn" data-roomid="${roomId}">Join</button>
+            `;
+            roomsListDiv.appendChild(roomElement);
+        }
+        
+        // Add event listeners to join buttons
+        document.querySelectorAll('.join-room-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const roomId = btn.getAttribute('data-roomid');
+                const roomInfo = rooms[roomId];
+                joinRoom(roomId, roomInfo.name);
             });
         });
     }
 
-    // Initialize PeerJS
+    // Initialize PeerJS for chat
     function initPeer() {
         peer = new Peer(null, {
             debug: 2
@@ -118,8 +331,25 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Register public room
             if (isPublic) {
-                registerPublicRoom(roomId, roomName);
+                // Add to local storage
+                addPublicRoom(roomId, roomName);
                 displaySystemMessage('This room is public and visible in the public rooms list.');
+                
+                // Announce to discovery network
+                if (discoveryPeer) {
+                    try {
+                        const conn = discoveryPeer.connect(DISCOVERY_ID);
+                        conn.on('open', () => {
+                            conn.send({
+                                type: 'room-announcement',
+                                roomId: roomId,
+                                roomName: roomName
+                            });
+                        });
+                    } catch (err) {
+                        console.error('Failed to announce room:', err);
+                    }
+                }
             } else {
                 displaySystemMessage('This room is private. Share the Room ID to invite others.');
             }
@@ -369,7 +599,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // Leave current room
     function leaveRoom() {
         if (isHost && isPublic) {
-            unregisterPublicRoom(roomId);
+            removePublicRoom(roomId);
+            
+            // Announce room removal
+            if (discoveryPeer) {
+                try {
+                    const conn = discoveryPeer.connect(DISCOVERY_ID);
+                    conn.on('open', () => {
+                        conn.send({
+                            type: 'room-removed',
+                            roomId: roomId
+                        });
+                    });
+                } catch (err) {
+                    console.error('Failed to announce room removal:', err);
+                }
+            }
         }
 
         // Close all connections
@@ -416,7 +661,12 @@ document.addEventListener('DOMContentLoaded', () => {
         publicRoomsDiv.style.display = 'block';
         createForm.style.display = 'none';
         joinForm.style.display = 'none';
-        loadPublicRooms();
+        
+        // Initialize discovery peer if not already done
+        initDiscoveryPeer();
+        
+        // Display local public rooms first
+        displayPublicRooms();
     });
 
     createRoomBtn.addEventListener('click', createRoom);
@@ -430,7 +680,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    refreshRoomsBtn.addEventListener('click', loadPublicRooms);
+    refreshRoomsBtn.addEventListener('click', () => {
+        // Initialize discovery peer if not already done
+        initDiscoveryPeer();
+        
+        // Try to get fresh data from discovery network
+        try {
+            const conn = discoveryPeer.connect(DISCOVERY_ID);
+            conn.on('open', () => {
+                conn.send({
+                    type: 'request-public-rooms'
+                });
+                
+                // Display current data while waiting for response
+                displayPublicRooms();
+            });
+        } catch (err) {
+            console.error('Failed to refresh rooms:', err);
+            displayPublicRooms();
+        }
+    });
 
     backBtn.addEventListener('click', () => {
         publicRoomsDiv.style.display = 'none';
@@ -462,29 +731,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clean up on window unload
     window.addEventListener('beforeunload', () => {
         if (isHost && isPublic && roomId) {
-            unregisterPublicRoom(roomId);
+            removePublicRoom(roomId);
+        }
+        
+        // Disconnect from discovery network
+        if (discoveryPeer) {
+            discoveryPeer.destroy();
         }
     });
 
-    // Initialize
-    // Check for expired public rooms (older than 24 hours)
+    // Initialize discovery peer on page load
+    initDiscoveryPeer();
+
+    // Clean up expired rooms (older than 24 hours)
     const cleanupExpiredRooms = () => {
-        const publicRooms = getPublicRooms();
+        const rooms = getLocalPublicRooms();
         const now = new Date();
         let updated = false;
 
-        for (const [roomId, roomInfo] of Object.entries(publicRooms)) {
+        for (const [roomId, roomInfo] of Object.entries(rooms)) {
             const createdAt = new Date(roomInfo.createdAt);
             const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
 
             if (hoursDiff > 24) {
-                delete publicRooms[roomId];
+                delete rooms[roomId];
                 updated = true;
             }
         }
 
         if (updated) {
-            localStorage.setItem('publicRooms', JSON.stringify(publicRooms));
+            localStorage.setItem('publicRooms', JSON.stringify(rooms));
         }
     };
 
